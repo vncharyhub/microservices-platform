@@ -1,35 +1,54 @@
-// Jenkinsfile
 pipeline {
-  agent any
-  stages {
-    stage('Build') {
-      steps {
-        sh 'mvn -f src/user-service clean package'
-      }
+    agent any
+    environment {
+        ARTIFACTORY_CREDENTIALS = credentials('artifactory-creds')
+        KUBECONFIG = credentials('kubeconfig')
     }
-    stage('Test') {
-      steps {
-        sh 'mvn -f src/user-service test'
-      }
-    }
-    stage('SonarQube Analysis') {
-      steps {
-        withSonarQubeEnv('sonar-server') {
-          sh 'mvn -f src/user-service sonar:sonar'
+    stages {
+        stage('Build & Test') {
+            steps {
+                sh 'mvn -f src/user-service clean package'
+                sh 'mvn -f src/product-service clean package'
+            }
         }
-      }
-    }
-    stage('Build Docker Image') {
-      steps {
-        script {
-          docker.build("jfrog.io/myproject/user-service:${env.BUILD_ID}")
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar-server') {
+                    sh 'mvn -f src/user-service sonar:sonar'
+                    sh 'mvn -f src/product-service sonar:sonar'
+                }
+            }
         }
-      }
+        stage('Build Docker Images') {
+            steps {
+                script {
+                    docker.build("jfrog.acme.io/docker-local/user-service:${env.BUILD_ID}")
+                    docker.build("jfrog.acme.io/docker-local/product-service:${env.BUILD_ID}")
+                }
+            }
+        }
+        stage('Push to Artifactory') {
+            steps {
+                script {
+                    docker.withRegistry('https://jfrog.acme.io', ARTIFACTORY_CREDENTIALS) {
+                        docker.image("jfrog.acme.io/docker-local/user-service:${env.BUILD_ID}").push()
+                        docker.image("jfrog.acme.io/docker-local/product-service:${env.BUILD_ID}").push()
+                    }
+                }
+            }
+        }
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh "kubectl apply -f src/k8s/user-service-deployment.yaml"
+                sh "kubectl apply -f src/k8s/product-service-deployment.yaml"
+                sh "kubectl rollout restart deployment/user-service"
+                sh "kubectl rollout restart deployment/product-service"
+            }
+        }
     }
-    stage('Deploy to K8s') {
-      steps {
-        sh "python3 jenkins/scripts/deploy-to-k8s.py user-service"
-      }
+    post {
+        always {
+            cleanWs()
+        }
     }
-  }
 }
