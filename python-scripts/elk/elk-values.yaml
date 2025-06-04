@@ -1,0 +1,36 @@
+elasticsearch:
+  replicas: 3
+  minimumMasterNodes: 2
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "1000m"
+    limits:
+      memory: "8Gi"
+      cpu: "2000m"
+
+kibana:
+  enabled: true
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+
+logstash:
+  enabled: true
+  pipelines:
+    - name: main
+      config: |
+        input { 
+          beats { port => 5044 } 
+        }
+        filter {
+          grok {
+            match => { "message" => "%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:message}" }
+          }
+        }
+        output {
+          elasticsearch {
+            hosts => ["http://elasticsearch-master:9200"]
+          }
+        }
