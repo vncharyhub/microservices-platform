@@ -1,1 +1,8 @@
-
+# jenkins-setup.yml
+- name: Install Jenkins
+  hosts: jenkins
+  tasks:
+    - name: Add Jenkins repository
+      apt_repository:
+        repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+        key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
